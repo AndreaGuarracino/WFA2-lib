@@ -265,6 +265,7 @@ typedef struct {
   float error_degree;
   int indels_num;
   int indels_length;
+  int pangenome;
   int debug;
 } countour_bench_args;
 countour_bench_args parameters = {
@@ -275,6 +276,7 @@ countour_bench_args parameters = {
     .error_degree = 0.04,
     .indels_num = 0,
     .indels_length = 0,
+    .pangenome = 0,
     .debug = 0,
 };
 /*
@@ -285,12 +287,14 @@ void usage() {
                   "      Options::\n"
                   "        --output|o         PATH        Output path of the generated sequences\n"
                   "        --num-patterns|n   INT         Total number of sequence-pairs generated\n"
+                  "                                       OR number of sequences in pangenome (with --pangenome)\n"
                   "        --length|l         INT         Length of the pattern (pattern.length) \n"
                   "        --length-diff      FLOAT       Length of the text as percentage\n"
                   "                                       of the pattern.length (default=1.0)\n"
                   "        --error|e          FLOAT       Simulated errors (mismatch/insertion/deletion)\n"
                   "                                       as a percentage of the pattern.length (default=0.04)\n"
                   "        --indels           NUM,LENGTH  Insert up to additional INT indels of LENGTH (default=0,0)\n"
+                  "        --pangenome                    Generate pangenome with n sequences (each at error rate e from reference)\n"
                   //"        --debug|g                    \n"
                   "        --help|h                       \n");
 }
@@ -302,6 +306,7 @@ void parse_arguments(int argc,char** argv) {
     { "length-diff", required_argument, 0, 1000 },
     { "error", required_argument, 0, 'e' },
     { "indels", required_argument, 0, 1001 },
+    { "pangenome", no_argument, 0, 1002 },
     { "debug", no_argument, 0, 'g' },
     { "help", no_argument, 0, 'h' },
     { 0, 0, 0, 0 } };
@@ -336,6 +341,9 @@ void parse_arguments(int argc,char** argv) {
         parameters.indels_length = atof(sentinel);
         break;
       }
+      case 1002: // --pangenome
+        parameters.pangenome = 1;
+        break;
       case 'g':
         parameters.debug = 1;
         break;
@@ -352,49 +360,102 @@ int main(int argc,char* argv[]) {
   parse_arguments(argc,argv);
   // Open file
   FILE* const output_file = (parameters.output==NULL) ? stdout : fopen(parameters.output,"w");
-  // Allocate sequences
-  const int pattern_length = parameters.length;
-  const int text_length = ceil((float)pattern_length * parameters.length_diff);
-  const int seqlong_length = MAX(pattern_length,text_length); // Long sequence
-  const int seqshort_length = MIN(pattern_length,text_length); // Short sequence
-  const int num_errors = (parameters.error_degree >= 1.0) ?
-      (int) parameters.error_degree : ceil((float)pattern_length * parameters.error_degree);
-  char* const seqlong = malloc(seqlong_length+1);
-  char* const seqshort = malloc(seqshort_length+1+num_errors+parameters.indels_num*parameters.indels_length);
-  seq_error_t* const errors_log = malloc((num_errors+parameters.indels_num+1)*sizeof(seq_error_t));
-  // Read-align loop
+  // Initialize random seed
   srand(time(0));
-  int i;
-  for (i=0;i<parameters.num_reads;++i) {
-    // Generate random sequence
-    sequence_generate_random(seqlong,seqlong_length);
-    // Extract short sequence from long
-    const int offset = sequence_extract(seqlong,seqlong_length,seqshort,seqshort_length);
-    // Generate errors
-    if (num_errors > 0) sequence_generate_errors(seqshort,seqshort_length,num_errors,errors_log);
-    // Generate indels
-    if (parameters.indels_num > 0) {
-      sequence_generate_indels(seqshort,seqshort_length,
-          parameters.indels_num,parameters.indels_length,errors_log+num_errors);
+
+  if (parameters.pangenome) {
+    // Pangenome mode: generate n sequences derived from a reference
+    const int sequence_length = parameters.length;
+    const int num_errors = (parameters.error_degree >= 1.0) ?
+        (int) parameters.error_degree : ceil((float)sequence_length * parameters.error_degree);
+
+    // Allocate memory for reference and variant sequences
+    char* const reference = malloc(sequence_length+1);
+    char* const variant = malloc(sequence_length+1+num_errors+parameters.indels_num*parameters.indels_length);
+    seq_error_t* const errors_log = malloc((num_errors+parameters.indels_num+1)*sizeof(seq_error_t));
+
+    // Generate reference sequence
+    sequence_generate_random(reference,sequence_length);
+
+    // Generate n sequences
+    int i;
+    for (i=0;i<parameters.num_reads;++i) {
+      // Copy reference to variant
+      strcpy(variant, reference);
+
+      // Generate errors
+      if (num_errors > 0) {
+        sequence_generate_errors(variant,sequence_length,num_errors,errors_log);
+      }
+
+      // Generate indels
+      if (parameters.indels_num > 0) {
+        sequence_generate_indels(variant,sequence_length,
+            parameters.indels_num,parameters.indels_length,errors_log+num_errors);
+      }
+
+      // DEBUG
+      if (parameters.debug) {
+        fprintf(output_file,"#DEBUG seq=%d errors=",i);
+        sequence_errors_print(output_file,errors_log);
+        fprintf(output_file,"\n");
+      }
+
+      // Print in FASTA format
+      fprintf(output_file,">seq%d\n%s\n",i,variant);
     }
-    // DEBUG
-    if (parameters.debug) {
-      fprintf(output_file,"#DEBUG offset=%d errors=",offset);
-      sequence_errors_print(output_file,errors_log);
-      fprintf(output_file,"\n");
+
+    // Free memory
+    free(reference);
+    free(variant);
+    free(errors_log);
+  } else {
+    // Original pairwise mode
+    const int pattern_length = parameters.length;
+    const int text_length = ceil((float)pattern_length * parameters.length_diff);
+    const int seqlong_length = MAX(pattern_length,text_length); // Long sequence
+    const int seqshort_length = MIN(pattern_length,text_length); // Short sequence
+    const int num_errors = (parameters.error_degree >= 1.0) ?
+        (int) parameters.error_degree : ceil((float)pattern_length * parameters.error_degree);
+    char* const seqlong = malloc(seqlong_length+1);
+    char* const seqshort = malloc(seqshort_length+1+num_errors+parameters.indels_num*parameters.indels_length);
+    seq_error_t* const errors_log = malloc((num_errors+parameters.indels_num+1)*sizeof(seq_error_t));
+
+    // Read-align loop
+    int i;
+    for (i=0;i<parameters.num_reads;++i) {
+      // Generate random sequence
+      sequence_generate_random(seqlong,seqlong_length);
+      // Extract short sequence from long
+      const int offset = sequence_extract(seqlong,seqlong_length,seqshort,seqshort_length);
+      // Generate errors
+      if (num_errors > 0) sequence_generate_errors(seqshort,seqshort_length,num_errors,errors_log);
+      // Generate indels
+      if (parameters.indels_num > 0) {
+        sequence_generate_indels(seqshort,seqshort_length,
+            parameters.indels_num,parameters.indels_length,errors_log+num_errors);
+      }
+      // DEBUG
+      if (parameters.debug) {
+        fprintf(output_file,"#DEBUG offset=%d errors=",offset);
+        sequence_errors_print(output_file,errors_log);
+        fprintf(output_file,"\n");
+      }
+      // Print
+      if (pattern_length <= text_length) {
+        fprintf(output_file,">%s\n",seqshort);
+        fprintf(output_file,"<%s\n",seqlong);
+      } else {
+        fprintf(output_file,"<%s\n",seqlong);
+        fprintf(output_file,">%s\n",seqshort);
+      }
     }
-    // Print
-    if (pattern_length <= text_length) {
-      fprintf(output_file,">%s\n",seqshort);
-      fprintf(output_file,"<%s\n",seqlong);
-    } else {
-      fprintf(output_file,"<%s\n",seqlong);
-      fprintf(output_file,">%s\n",seqshort);
-    }
+    // Close files & free
+    free(seqlong);
+    free(seqshort);
+    free(errors_log);
   }
-  // Close files & free
+
+  // Close output file
   if (parameters.output!=NULL) fclose(output_file);
-  free(seqlong);
-  free(seqshort);
-  free(errors_log);
 }

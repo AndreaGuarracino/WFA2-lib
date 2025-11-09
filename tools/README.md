@@ -9,36 +9,55 @@ The WFA2-lib offers tools that exploits the different libraries features and ser
 
 ## <a name="tool.generate"></a> 1. GENERATE DATASET TOOL
 
-The *generate-dataset* tool allows generating synthetic random datasets for testing and benchmarking purposes. This tool produces a simple output format (i.e., each pair of sequences in 2 lines) containing the pairs of sequences to be aligned using the *align-benchmark* tool. For example, the following command generates a dataset named 'sample.dataset.seq' of 5M pairs of 100 bases with an alignment error of 5% (i.e., 5 mismatches, insertions, or deletions per alignment).
+The *generate-dataset* tool allows generating synthetic random datasets for testing and benchmarking purposes. This tool produces either pairwise sequences for alignment benchmarking or pangenome sequences for multiple sequence analysis.
+
+### Pairwise Mode (Default)
+
+Generates pairs of sequences for pairwise alignment. For example, the following command generates a dataset named 'sample.dataset.seq' of 5M pairs of 100 bases with an alignment error of 5% (i.e., 5 mismatches, insertions, or deletions per alignment).
 
 ```
 $> ./bin/generate_dataset -n 5000000 -l 100 -e 0.05 -o sample.dataset.seq
 ```
 
-### Command-line Options 
+### Pangenome Mode
+
+Generates multiple sequences derived from a common reference, simulating a pangenome. Use the `--pangenome` flag to enable this mode. For example:
+
+```
+$> ./bin/generate_dataset --pangenome -n 10 -l 1000 -e 0.02 -o pangenome.fasta
+```
+
+This generates 10 sequences of length 1000bp in FASTA format, each with ~2% divergence from a common reference.
+
+**Note on pairwise distances:** Each sequence is independently generated from the reference with error rate `-e`. Therefore, the expected pairwise distance between any two sequences is approximately `2*e` (since errors are introduced independently). To achieve an average pairwise distance of `d`, use `-e d/2`.
+
+### Command-line Options
 
 ```
         --output|o <File>
           Filename/Path to the output dataset.
-          
+
         --num-patterns|n <Integer>
-          Total number of sequence-pairs generated (i.e., pattern+text).
-          
+          Pairwise mode: Total number of sequence-pairs generated (i.e., pattern+text).
+          Pangenome mode: Total number of sequences generated in the pangenome.
+
         --length|l <Integer>
           Length of the generated pattern (ie., query or sequence) and text (i.e., target or reference)
-          
-        --length|l <Integer>
-          Length of the pattern (pattern.length).
-          
+
         --length-diff <Float>
-          Length of the text as percentage of the pattern.length (default=1.0).
-          
+          (Pairwise mode only) Length of the text as percentage of the pattern.length (default=1.0).
+
         --error|e <Float>
-          Simulated errors (mismatch/insertion/deletion) as a percentage of the pattern.length (default=0.04). This parameter may modify the final length of the text.
-          
-        --indels <Integer1>,<Integer2>  
-          Insert up to additional <Integer1> indels of <Integer2> (default=0,0)  
-          
+          Simulated errors (mismatch/insertion/deletion) as a percentage of the pattern.length (default=0.04).
+          This parameter may modify the final length of the text.
+
+        --indels <Integer1>,<Integer2>
+          Insert up to additional <Integer1> indels of <Integer2> (default=0,0)
+
+        --pangenome
+          Generate pangenome with n sequences (each at error rate e from a common reference).
+          Output is in FASTA format with headers >seq0, >seq1, etc.
+
         --help|h
           Outputs a succinct manual for the tool.
 ```
