@@ -56,7 +56,7 @@ This generates 10 sequences of length 1000bp in FASTA format, each with ~2% dive
 
         --pangenome
           Generate pangenome with n sequences (each at error rate e from a common reference).
-          Output is in FASTA format with headers >seq0, >seq1, etc.
+          Output is in FASTA format with headers >sample1#0#seq, >sample2#0#seq, etc.
 
         --help|h
           Outputs a succinct manual for the tool.

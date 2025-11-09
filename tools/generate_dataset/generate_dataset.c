@@ -402,7 +402,7 @@ int main(int argc,char* argv[]) {
       }
 
       // Print in FASTA format
-      fprintf(output_file,">seq%d\n%s\n",i,variant);
+      fprintf(output_file,">sample%d#0#seq\n%s\n",i+1,variant);
     }
 
     // Free memory
